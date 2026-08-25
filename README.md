@@ -9,9 +9,13 @@ Projeto de portfólio para demonstrar competências em engenharia de dados: extr
 ## 🏗️ Arquitetura
 
 Coinbase API 
+
 │ ▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] (JSON bruto) 
+
 │ ▼ [Airflow DAG] ── transformação ──▶ [MinIO ou Postgres / Silver] (dados limpos, Parquet) 
+
 │ ▼ [Airflow DAG] ── curadoria ──▶ [Postgres / Gold] (tabelas agregadas) 
+
 │ ▼ [Metabase] ── dashboards e visualizações
 
 ### Camadas
@@ -33,21 +37,36 @@ Coinbase API
 
 ## 📁 Estrutura do projeto
 
-crypto-data-pipeline/ 
+crypto-data-pipeline/
+
 ├── docker-compose.yml 
+
 ├── .env 
+
 ├── README.md 
+
 ├── requirements.txt
+
 ├── dags/ 
+
 │ └── coinbase_pipeline_dag.py 
+
 ├── src/ 
+
 │ ├── extract/ 
+
 │ │ └── coinbase_extractor.py 
+
 │ ├── transform/ 
+
 │ │ └── bronze_to_silver.py 
+
 │ └── load/ 
+
 │ └── silver_to_gold.py 
+
 ├── sql/ 
+
 │ └── gold_tables.sql 
 
 
@@ -71,20 +90,23 @@ GET https://api.exchange.coinbase.com/products/{PAR}/ticker
 ### Passos
 
 1. Clone o repositório:
-git clone https://github.com/seu-usuario/crypto-data-pipeline.git
-cd crypto-data-pipeline
 
-2. Configure as variáveis de ambiente no arquivo `.env` (credenciais do Postgres, MinIO, Airflow, etc.).
+   git clone https://github.com/seu-usuario/crypto-data-pipeline.git
 
-3. Suba os containers:
-docker-compose up -d
+   cd crypto-data-pipeline
 
-4. Acesse as interfaces:
+4. Configure as variáveis de ambiente no arquivo `.env` (credenciais do Postgres, MinIO, Airflow, etc.).
+
+5. Suba os containers:
+   
+   docker-compose up -d
+
+7. Acesse as interfaces:
    - Airflow: `http://localhost:8080`
    - MinIO Console: `http://localhost:9001`
    - Metabase: `http://localhost:3000`
 
-5. Ative a DAG `coinbase_pipeline_dag` na interface do Airflow para iniciar a extração agendada.
+8. Ative a DAG `coinbase_pipeline_dag` na interface do Airflow para iniciar a extração agendada.
 
 ## 🗂️ Modelagem da camada Gold
 
@@ -109,6 +131,3 @@ Sugestões de visualizações:
 - [ ] Versionar schema das tabelas Gold com migrations.
 - [ ] Deploy em ambiente cloud (ex: AWS S3 no lugar do MinIO).
 
-## 📄 Licença
-
-Este projeto está sob a licença MIT.
