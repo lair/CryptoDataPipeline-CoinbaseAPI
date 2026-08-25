@@ -8,7 +8,11 @@ Projeto de portfólio para demonstrar competências em engenharia de dados: extr
 
 ## 🏗️ Arquitetura
 
-Coinbase API │ ▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] (JSON bruto) │ ▼ [Airflow DAG] ── transformação ──▶ [MinIO ou Postgres / Silver] (dados limpos, Parquet) │ ▼ [Airflow DAG] ── curadoria ──▶ [Postgres / Gold] (tabelas agregadas) │ ▼ [Metabase] ── dashboards e visualizações
+Coinbase API 
+│ ▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] (JSON bruto) 
+│ ▼ [Airflow DAG] ── transformação ──▶ [MinIO ou Postgres / Silver] (dados limpos, Parquet) 
+│ ▼ [Airflow DAG] ── curadoria ──▶ [Postgres / Gold] (tabelas agregadas) 
+│ ▼ [Metabase] ── dashboards e visualizações
 
 ### Camadas
 
@@ -29,7 +33,23 @@ Coinbase API │ ▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] 
 
 ## 📁 Estrutura do projeto
 
-crypto-data-pipeline/ ├── docker-compose.yml ├── .env ├── README.md ├── dags/ │ └── coinbase_pipeline_dag.py ├── src/ │ ├── extract/ │ │ └── coinbase_extractor.py │ ├── transform/ │ │ └── bronze_to_silver.py │ └── load/ │ └── silver_to_gold.py ├── sql/ │ └── gold_tables.sql └── requirements.txt
+crypto-data-pipeline/ 
+├── docker-compose.yml 
+├── .env 
+├── README.md 
+├── requirements.txt
+├── dags/ 
+│ └── coinbase_pipeline_dag.py 
+├── src/ 
+│ ├── extract/ 
+│ │ └── coinbase_extractor.py 
+│ ├── transform/ 
+│ │ └── bronze_to_silver.py 
+│ └── load/ 
+│ └── silver_to_gold.py 
+├── sql/ 
+│ └── gold_tables.sql 
+
 
 ## 🔗 API utilizada
 
