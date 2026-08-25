@@ -1,0 +1,140 @@
+#version: "3.9"
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3-python3.11
+  build:
+    context: .
+    dockerfile: Dockerfile
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_POSTGRES_USER}:${AIRFLOW_POSTGRES_PASSWORD}@${AIRFLOW_POSTGRES_HOST}:${AIRFLOW_POSTGRES_PORT}/${AIRFLOW_POSTGRES_DB}
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+
+    MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+    MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+    MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+
+    DWH_POSTGRES_HOST: ${POSTGRES_HOST}
+    DWH_POSTGRES_PORT: ${POSTGRES_PORT}
+    DWH_POSTGRES_DB: ${POSTGRES_DB}
+    DWH_POSTGRES_USER: ${POSTGRES_USER}
+    DWH_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    COINBASE_API_BASE_URL: ${COINBASE_API_BASE_URL}
+    COINBASE_TICKER_ENDPOINT: ${COINBASE_TICKER_ENDPOINT}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./src:/opt/airflow/src
+    - ./sql:/opt/airflow/sql
+    - ./requirements.txt:/opt/airflow/requirements.txt
+    - airflow_logs:/opt/airflow/logs
+  depends_on:
+    - airflow-postgres
+  networks:
+    - crypto-pipeline
+
+services:
+
+  # ---------- Banco de metadados do Airflow ----------
+  airflow-postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${AIRFLOW_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${AIRFLOW_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_POSTGRES_DB}
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+    networks:
+      - crypto-pipeline
+
+  # ---------- Inicialização do Airflow ----------
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        pip install --no-cache-dir -r /opt/airflow/requirements.txt &&
+        airflow db init &&
+        airflow users create \
+          --username ${AIRFLOW_ADMIN_USER} \
+          --password ${AIRFLOW_ADMIN_PASSWORD} \
+          --firstname ${AIRFLOW_ADMIN_FIRSTNAME} \
+          --lastname ${AIRFLOW_ADMIN_LASTNAME} \
+          --role Admin \
+          --email ${AIRFLOW_ADMIN_EMAIL}
+
+  # ---------- Webserver do Airflow ----------
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "${AIRFLOW_WEBSERVER_PORT}:8080"
+    depends_on:
+      - airflow-init
+
+  # ---------- Scheduler do Airflow ----------
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      - airflow-init
+
+  # ---------- Data Warehouse (camada Gold) ----------
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    networks:
+      - crypto-pipeline
+
+  # ---------- Data Lake (camadas Bronze e Silver) ----------
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - crypto-pipeline
+
+  # ---------- Visualização e BI ----------
+  metabase:
+    image: metabase/metabase:latest
+    ports:
+      - "${METABASE_PORT}:3000"
+    environment:
+      MB_DB_TYPE: ${MB_DB_TYPE}
+      MB_DB_DBNAME: ${POSTGRES_DB}
+      MB_DB_PORT: ${POSTGRES_PORT}
+      MB_DB_USER: ${POSTGRES_USER}
+      MB_DB_PASS: ${POSTGRES_PASSWORD}
+      MB_DB_HOST: ${POSTGRES_HOST}
+    depends_on:
+      - postgres
+    networks:
+      - crypto-pipeline
+
+volumes:
+  airflow_postgres_data:
+  airflow_logs:
+  postgres_data:
+  minio_data:
+
+networks:
+  crypto-pipeline:
+    driver: bridge
