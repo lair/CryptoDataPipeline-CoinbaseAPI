@@ -10,19 +10,27 @@ Projeto de portfólio para demonstrar competências em engenharia de dados: extr
 
 Coinbase API 
 
-│ ▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] (JSON bruto) 
+│ 
 
-│ ▼ [Airflow DAG] ── transformação ──▶ [MinIO ou Postgres / Silver] (dados limpos, Parquet) 
+▼ [Airflow DAG] ── extração ──▶ [MinIO / Bronze] (JSON bruto) 
 
-│ ▼ [Airflow DAG] ── curadoria ──▶ [Postgres / Gold] (tabelas agregadas) 
+│ 
 
-│ ▼ [Metabase] ── dashboards e visualizações
+▼ [Airflow DAG] ── transformação ──▶ [MinIO ou Postgres / Silver] (dados limpos, Parquet) 
+
+│ 
+
+▼ [Airflow DAG] ── curadoria ──▶ [Postgres / Gold] (tabelas agregadas) 
+
+│ 
+
+▼ [Metabase] ── dashboards e visualizações
 
 ### Camadas
 
 - **Bronze**: dados brutos exatamente como recebidos da API, em JSON, armazenados no MinIO com particionamento por data (`bronze/coinbase/{par}/{ano}/{mes}/{dia}/{arquivo}.json`).
-- **Silver**: dados limpos, tipados e deduplicados, com schema padronizado (`timestamp`, `par`, `preco`, `volume_24h`). Armazenados em Parquet no MinIO.
-- **Gold**: tabelas de negócio prontas para consumo (preço médio por hora, variação percentual, últimos preços por par), armazenadas em Postgres.
+- **Silver**: dados normalizados e tipados, com schema padronizado (`pair`, `price`, `bid`, `ask`, `volume_24h`, `trade_id`, `exchange_time`, `extracted_at`). Armazenados em Parquet no MinIO, espelhando o mesmo particionamento da Bronze.
+- **Gold**: tabelas de negócio prontas para consumo (último preço por par, histórico completo e variação percentual), armazenadas em Postgres.
 
 ## 🧰 Stack utilizada
 
@@ -32,14 +40,17 @@ Coinbase API
 | Docker / Docker Compose | Orquestração dos containers |
 | Apache Airflow | Orquestração e agendamento das DAGs |
 | MinIO | Data lake (armazenamento de objetos S3-compatível) |
-| PostgreSQL | Data warehouse (camada Gold e metadados do Airflow) |
+| PostgreSQL | Data warehouse (camada Gold) e metadados do Airflow |
 | Metabase | Camada de visualização e BI |
+
 
 ## 📁 Estrutura do projeto
 
 crypto-data-pipeline/
 
 ├── docker-compose.yml 
+
+├── Dockerfile
 
 ├── .env 
 
@@ -53,22 +64,31 @@ crypto-data-pipeline/
 
 ├── src/ 
 
+│ ├── init.py
+
 │ ├── extract/ 
+
+│ │ ├── init.py
 
 │ │ └── coinbase_extractor.py 
 
 │ ├── transform/ 
 
+│ │ ├── init.py
+
 │ │ └── bronze_to_silver.py 
 
 │ └── load/ 
 
-│ └── silver_to_gold.py 
+│ │ ├── init.py
+
+│   └── silver_to_gold.py 
 
 ├── sql/ 
 
 │ └── gold_tables.sql 
 
+A imagem do Airflow é construída a partir de um `Dockerfile` próprio, que instala as dependências do projeto (`minio`, `pandas`, `pyarrow`, `psycopg2-binary`, etc.) respeitando o arquivo de constraints oficial da versão do Airflow utilizada, evitando conflitos de dependência.
 
 ## 🔗 API utilizada
 
@@ -95,39 +115,45 @@ GET https://api.exchange.coinbase.com/products/{PAR}/ticker
 
    cd crypto-data-pipeline
 
-4. Configure as variáveis de ambiente no arquivo `.env` (credenciais do Postgres, MinIO, Airflow, etc.).
+2. Configure as variáveis de ambiente no arquivo `.env` (credenciais do Postgres, MinIO, Airflow, endpoints da Coinbase, etc.).
 
-5. Suba os containers:
-   
-   docker-compose up -d
+3. Construa as imagens e suba os containers:
 
-7. Acesse as interfaces:
+docker compose build --no-cache docker compose up -d
+
+4. Acesse as interfaces:
    - Airflow: `http://localhost:8080`
    - MinIO Console: `http://localhost:9001`
    - Metabase: `http://localhost:3000`
 
-8. Ative a DAG `coinbase_pipeline_dag` na interface do Airflow para iniciar a extração agendada.
+5. Ative a DAG `coinbase_pipeline_dag` na interface do Airflow para iniciar a extração agendada (execução a cada 15 minutos por padrão).
+
+6. Na primeira vez que acessar o Metabase, crie a conta de administrador e conecte-o ao Postgres da camada Gold, apontando para o schema `gold`.
 
 ## 🗂️ Modelagem da camada Gold
 
-Exemplo de tabelas na camada Gold (Postgres):
+Tabelas criadas via `sql/gold_tables.sql`, no schema `gold` do Postgres:
 
-- `gold.cotacoes_atuais`: último preço registrado por par.
-- `gold.cotacoes_horarias`: preço médio, mínimo e máximo agregados por hora.
-- `gold.variacao_percentual`: variação percentual do preço em relação ao período anterior.
+- `gold.cotacoes_atuais`: último preço conhecido de cada par (uma linha por par, atualizada via upsert a cada execução da DAG).
+- `gold.cotacoes_historico`: série temporal completa de preços por par (uma linha por extração, formando o histórico ao longo do tempo).
+- `gold.variacao_percentual`: variação percentual do preço atual em relação ao registro histórico imediatamente anterior, por par.
 
 ## 📊 Dashboards no Metabase
 
-Sugestões de visualizações:
-- Evolução do preço de BTC, ETH e SOL ao longo do tempo.
-- Comparativo de variação percentual entre as três moedas.
-- Tabela com últimas cotações atualizadas.
+Consultas já validadas para compor o dashboard principal:
+
+- Tabela com o preço atual de cada par (`gold.cotacoes_atuais`).
+- Gráfico de linha com a evolução do preço de BTC, ETH e SOL ao longo do tempo (`gold.cotacoes_historico`).
+- Cards com a variação percentual mais recente por par (`gold.variacao_percentual`).
+- Gráfico de linha com a variação percentual calculada ponto a ponto via `LAG()` sobre o histórico, para identificar picos de volatilidade.
+- Gráfico de barras comparando o volume negociado nas últimas 24h entre os pares.
+- Card de monitoramento de *freshness*, indicando há quantos minutos cada par foi atualizado pela última vez (útil para detectar falhas silenciosas na DAG).
 
 ## 🚀 Próximos passos / Roadmap
 
-- [ ] Adicionar testes automatizados (pytest) para as etapas de extração e transformação.
+- [ ] Adicionar testes automatizados (pytest) para as etapas de extração, transformação e carga.
 - [ ] Implementar alertas de falha das DAGs (e-mail/Slack).
 - [ ] Adicionar camada de qualidade de dados (Great Expectations).
 - [ ] Versionar schema das tabelas Gold com migrations.
+- [ ] Adicionar agregação horária (`gold.cotacoes_horarias`) com preço médio, mínimo e máximo por hora.
 - [ ] Deploy em ambiente cloud (ex: AWS S3 no lugar do MinIO).
-
