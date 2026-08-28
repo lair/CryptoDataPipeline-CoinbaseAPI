@@ -9,7 +9,7 @@ from src.load.silver_to_gold import load_silver_to_gold
 
 
 # Pares de moedas monitorados pelo pipeline
-CURRENCY_PAIRS = ["BTC-USDT", "ETH-USDT", "SOL-USDT"]
+CURRENCY_PAIRS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "USDT-USDC", "USDC-BRL"]
 
 default_args = {
     "owner": "lair",
