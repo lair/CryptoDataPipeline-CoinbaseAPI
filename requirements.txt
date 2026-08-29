@@ -4,3 +4,4 @@ pyarrow
 minio==7.2.9
 psycopg2-binary==2.9.9
 python-dotenv==1.0.1
+# Não precisa do SQLAlchemy pois o Airflow já vem com a versão que ele aceita
